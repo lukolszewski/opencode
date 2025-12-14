@@ -85,6 +85,10 @@ const context = createContext<{
   usernameVisible: () => boolean
   showDetails: () => boolean
   diffWrapMode: () => "word" | "none"
+  thinkingCollapsed: () => boolean
+  toolsCollapsed: () => boolean
+  expandedElements: () => Set<string>
+  toggleElementExpansion: (id: string) => void
   sync: ReturnType<typeof useSync>
 }>()
 
@@ -122,6 +126,11 @@ export function Session() {
   const [showDetails, setShowDetails] = createSignal(kv.get("tool_details_visibility", true))
   const [showScrollbar, setShowScrollbar] = createSignal(kv.get("scrollbar_visible", false))
   const [diffWrapMode, setDiffWrapMode] = createSignal<"word" | "none">("word")
+
+  // Collapsible state for thinking blocks and tool details
+  const [thinkingCollapsed, setThinkingCollapsed] = createSignal(kv.get("thinking_collapsed", false))
+  const [toolsCollapsed, setToolsCollapsed] = createSignal(kv.get("tools_collapsed", false))
+  const [expandedElements, setExpandedElements] = createSignal(new Set<string>(kv.get("expanded_elements", [])))
 
   const wide = createMemo(() => dimensions().width > 120)
   const sidebarVisible = createMemo(() => {
@@ -467,12 +476,49 @@ export function Session() {
     {
       title: showDetails() ? "Hide tool details" : "Show tool details",
       value: "session.toggle.actions",
-      keybind: "tool_details",
       category: "Session",
       onSelect: (dialog) => {
         const newValue = !showDetails()
         setShowDetails(newValue)
         kv.set("tool_details_visibility", newValue)
+        dialog.clear()
+      },
+    },
+    {
+      title: thinkingCollapsed() ? "Expand all thinking blocks" : "Collapse all thinking blocks",
+      value: "session.toggle.thinking_collapsed",
+      keybind: "thinking_toggle",
+      category: "Session",
+      onSelect: (dialog) => {
+        setThinkingCollapsed((prev) => {
+          const next = !prev
+          kv.set("thinking_collapsed", next)
+          // Clear individually expanded elements when toggling globally
+          if (!next) {
+            setExpandedElements(new Set<string>())
+            kv.set("expanded_elements", [])
+          }
+          return next
+        })
+        dialog.clear()
+      },
+    },
+    {
+      title: toolsCollapsed() ? "Expand all tool details" : "Collapse all tool details",
+      value: "session.toggle.tools_collapsed",
+      keybind: "tool_details_toggle",
+      category: "Session",
+      onSelect: (dialog) => {
+        setToolsCollapsed((prev) => {
+          const next = !prev
+          kv.set("tools_collapsed", next)
+          // Clear individually expanded elements when toggling globally
+          if (!next) {
+            setExpandedElements(new Set<string>())
+            kv.set("expanded_elements", [])
+          }
+          return next
+        })
         dialog.clear()
       },
     },
@@ -810,6 +856,20 @@ export function Session() {
   const dialog = useDialog()
   const renderer = useRenderer()
 
+  // Toggle individual element expansion
+  const toggleElementExpansion = (id: string) => {
+    setExpandedElements((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      kv.set("expanded_elements", Array.from(next))
+      return next
+    })
+  }
+
   // snap to bottom when session changes
   createEffect(on(() => route.sessionID, toBottom))
 
@@ -825,6 +885,10 @@ export function Session() {
         usernameVisible,
         showDetails,
         diffWrapMode,
+        thinkingCollapsed,
+        toolsCollapsed,
+        expandedElements,
+        toggleElementExpansion,
         sync,
       }}
     >
@@ -1159,27 +1223,57 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
     // OpenRouter sends encrypted reasoning data that appears as [REDACTED]
     return props.part.text.replace("[REDACTED]", "").trim()
   })
+
+  const isCollapsed = createMemo(() => {
+    return ctx.thinkingCollapsed() && !ctx.expandedElements().has(props.part.id)
+  })
+
+  const handleExpand = () => {
+    ctx.toggleElementExpansion(props.part.id)
+  }
+
   return (
     <Show when={content() && ctx.showThinking()}>
-      <box
-        id={"text-" + props.part.id}
-        paddingLeft={2}
-        marginTop={1}
-        flexDirection="column"
-        border={["left"]}
-        customBorderChars={SplitBorder.customBorderChars}
-        borderColor={theme.backgroundElement}
+      <Show
+        when={!isCollapsed()}
+        fallback={
+          <box
+            id={"text-" + props.part.id}
+            paddingLeft={3}
+            marginTop={1}
+            onMouseUp={handleExpand}
+          >
+            <text fg={theme.textMuted}>
+              💭 Thinking... <span style={{ fg: theme.backgroundElement }}>(press Ctrl+O to expand all)</span>
+            </text>
+          </box>
+        }
       >
-        <code
-          filetype="markdown"
-          drawUnstyledText={false}
-          streaming={true}
-          syntaxStyle={subtleSyntax()}
-          content={"_Thinking:_ " + content()}
-          conceal={ctx.conceal()}
-          fg={theme.textMuted}
-        />
-      </box>
+        <box
+          id={"text-" + props.part.id}
+          paddingLeft={2}
+          marginTop={1}
+          flexDirection="column"
+          border={["left"]}
+          customBorderChars={SplitBorder.customBorderChars}
+          borderColor={theme.backgroundElement}
+        >
+          <box onMouseUp={handleExpand} paddingBottom={0}>
+            <text fg={theme.textMuted} italic={true}>
+              Thinking:
+            </text>
+          </box>
+          <code
+            filetype="markdown"
+            drawUnstyledText={false}
+            streaming={true}
+            syntaxStyle={subtleSyntax()}
+            content={content()}
+            conceal={ctx.conceal()}
+            fg={theme.textMuted}
+          />
+        </box>
+      </Show>
     </Show>
   )
 }
@@ -1208,16 +1302,35 @@ function TextPart(props: { last: boolean; part: TextPart; message: AssistantMess
 
 function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMessage }) {
   const { theme } = useTheme()
+  const ctx = use()
   const { showDetails } = use()
   const sync = useSync()
   const [margin, setMargin] = createSignal(0)
+
+  const hasError = createMemo(() => props.part.state.status === "error")
+  const hasPermission = createMemo(() =>
+    sync.data.permission[props.message.sessionID]?.some((x) => x.callID === props.part.callID),
+  )
+
+  const isCollapsed = createMemo(() => {
+    // Always show expanded if error or permission required
+    if (hasError() || hasPermission()) return false
+    // Check global collapsed state and individual expansion
+    return ctx.toolsCollapsed() && !ctx.expandedElements().has(props.part.callID)
+  })
+
+  const handleExpand = () => {
+    ctx.toggleElementExpansion(props.part.callID)
+  }
+
   const component = createMemo(() => {
     // Hide tool if showDetails is false and tool completed successfully
     // But always show if there's an error or permission is required
     const shouldHide =
       !showDetails() &&
       props.part.state.status === "completed" &&
-      !sync.data.permission[props.message.sessionID]?.some((x) => x.callID === props.part.callID)
+      !hasError() &&
+      !hasPermission()
 
     if (shouldHide) {
       return undefined
@@ -1231,6 +1344,18 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
     const permissions = sync.data.permission[props.message.sessionID] ?? []
     const permissionIndex = permissions.findIndex((x) => x.callID === props.part.callID)
     const permission = permissions[permissionIndex]
+
+    // If collapsed, show one-line preview
+    if (isCollapsed()) {
+      return (
+        <box paddingLeft={3} marginTop={1} onMouseUp={handleExpand}>
+          <text fg={theme.textMuted}>
+            🔨 {props.part.tool}{" "}
+            <span style={{ fg: theme.backgroundElement }}>(press Ctrl+T to expand all)</span>
+          </text>
+        </box>
+      )
+    }
 
     const style: BoxProps =
       container === "block" || permission
