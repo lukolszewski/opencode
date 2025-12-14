@@ -1259,8 +1259,8 @@ function ReasoningPart(props: { last: boolean; part: ReasoningPart; message: Ass
           borderColor={theme.backgroundElement}
         >
           <box onMouseUp={handleExpand} paddingBottom={0}>
-            <text fg={theme.textMuted} italic={true}>
-              Thinking:
+            <text fg={theme.textMuted}>
+              <i>Thinking:</i>
             </text>
           </box>
           <code
@@ -1408,6 +1408,7 @@ function ToolPart(props: { last: boolean; part: ToolPart; message: AssistantMess
           metadata={metadata}
           permission={permission?.metadata ?? {}}
           output={props.part.state.status === "completed" ? props.part.state.output : undefined}
+          onCollapse={handleExpand}
         />
         {props.part.state.status === "error" && (
           <box paddingLeft={2}>
@@ -1446,10 +1447,11 @@ type ToolProps<T extends Tool.Info> = {
   permission: Record<string, any>
   tool: string
   output?: string
+  onCollapse?: () => void
 }
 function GenericTool(props: ToolProps<any>) {
   return (
-    <ToolTitle icon="⚙" fallback="Writing command..." when={true}>
+    <ToolTitle icon="⚙" fallback="Writing command..." when={true} onCollapse={props.onCollapse}>
       {props.tool} {input(props.input)}
     </ToolTitle>
   )
@@ -1477,10 +1479,16 @@ const ToolRegistry = (() => {
   }
 })()
 
-function ToolTitle(props: { fallback: string; when: any; icon: string; children: JSX.Element }) {
+function ToolTitle(props: {
+  fallback: string
+  when: any
+  icon: string
+  children: JSX.Element
+  onCollapse?: () => void
+}) {
   const { theme } = useTheme()
   return (
-    <text paddingLeft={3} fg={props.when ? theme.textMuted : theme.text}>
+    <text paddingLeft={3} fg={props.when ? theme.textMuted : theme.text} onMouseUp={props.onCollapse}>
       <Show fallback={<>~ {props.fallback}</>} when={props.when}>
         <span style={{ bold: true }}>{props.icon}</span> {props.children}
       </Show>
@@ -1496,7 +1504,7 @@ ToolRegistry.register<typeof BashTool>({
     const { theme } = useTheme()
     return (
       <>
-        <ToolTitle icon="#" fallback="Writing command..." when={props.input.command}>
+        <ToolTitle icon="#" fallback="Writing command..." when={props.input.command} onCollapse={props.onCollapse}>
           {props.input.description || "Shell"}
         </ToolTitle>
         <Show when={props.input.command}>
@@ -1518,7 +1526,7 @@ ToolRegistry.register<typeof ReadTool>({
   render(props) {
     return (
       <>
-        <ToolTitle icon="→" fallback="Reading file..." when={props.input.filePath}>
+        <ToolTitle icon="→" fallback="Reading file..." when={props.input.filePath} onCollapse={props.onCollapse}>
           Read {normalizePath(props.input.filePath!)} {input(props.input, ["filePath"])}
         </ToolTitle>
       </>
@@ -1540,7 +1548,7 @@ ToolRegistry.register<typeof WriteTool>({
 
     return (
       <>
-        <ToolTitle icon="←" fallback="Preparing write..." when={props.input.filePath}>
+        <ToolTitle icon="←" fallback="Preparing write..." when={props.input.filePath} onCollapse={props.onCollapse}>
           Wrote {props.input.filePath}
         </ToolTitle>
         <line_number fg={theme.textMuted} minWidth={3} paddingRight={1}>
@@ -1572,7 +1580,7 @@ ToolRegistry.register<typeof GlobTool>({
   render(props) {
     return (
       <>
-        <ToolTitle icon="✱" fallback="Finding files..." when={props.input.pattern}>
+        <ToolTitle icon="✱" fallback="Finding files..." when={props.input.pattern} onCollapse={props.onCollapse}>
           Glob "{props.input.pattern}" <Show when={props.input.path}>in {normalizePath(props.input.path)} </Show>
           <Show when={props.metadata.count}>({props.metadata.count} matches)</Show>
         </ToolTitle>
@@ -1586,7 +1594,7 @@ ToolRegistry.register<typeof GrepTool>({
   container: "inline",
   render(props) {
     return (
-      <ToolTitle icon="✱" fallback="Searching content..." when={props.input.pattern}>
+      <ToolTitle icon="✱" fallback="Searching content..." when={props.input.pattern} onCollapse={props.onCollapse}>
         Grep "{props.input.pattern}" <Show when={props.input.path}>in {normalizePath(props.input.path)} </Show>
         <Show when={props.metadata.matches}>({props.metadata.matches} matches)</Show>
       </ToolTitle>
@@ -1606,7 +1614,7 @@ ToolRegistry.register<typeof ListTool>({
     })
     return (
       <>
-        <ToolTitle icon="→" fallback="Listing directory..." when={props.input.path !== undefined}>
+        <ToolTitle icon="→" fallback="Listing directory..." when={props.input.path !== undefined} onCollapse={props.onCollapse}>
           List {dir()}
         </ToolTitle>
       </>
@@ -1623,7 +1631,7 @@ ToolRegistry.register<typeof TaskTool>({
 
     return (
       <>
-        <ToolTitle icon="◉" fallback="Delegating..." when={props.input.subagent_type ?? props.input.description}>
+        <ToolTitle icon="◉" fallback="Delegating..." when={props.input.subagent_type ?? props.input.description} onCollapse={props.onCollapse}>
           {Locale.titlecase(props.input.subagent_type ?? "unknown")} Task "{props.input.description}"
         </ToolTitle>
         <Show when={props.metadata.summary?.length}>
@@ -1655,7 +1663,7 @@ ToolRegistry.register<typeof WebFetchTool>({
   container: "inline",
   render(props) {
     return (
-      <ToolTitle icon="%" fallback="Fetching from the web..." when={(props.input as any).url}>
+      <ToolTitle icon="%" fallback="Fetching from the web..." when={(props.input as any).url} onCollapse={props.onCollapse}>
         WebFetch {(props.input as any).url}
       </ToolTitle>
     )
@@ -1669,7 +1677,7 @@ ToolRegistry.register({
     const input = props.input as any
     const metadata = props.metadata as any
     return (
-      <ToolTitle icon="◇" fallback="Searching code..." when={input.query}>
+      <ToolTitle icon="◇" fallback="Searching code..." when={input.query} onCollapse={props.onCollapse}>
         Exa Code Search "{input.query}" <Show when={metadata.results}>({metadata.results} results)</Show>
       </ToolTitle>
     )
@@ -1683,7 +1691,7 @@ ToolRegistry.register({
     const input = props.input as any
     const metadata = props.metadata as any
     return (
-      <ToolTitle icon="◈" fallback="Searching web..." when={input.query}>
+      <ToolTitle icon="◈" fallback="Searching web..." when={input.query} onCollapse={props.onCollapse}>
         Exa Web Search "{input.query}" <Show when={metadata.numResults}>({metadata.numResults} results)</Show>
       </ToolTitle>
     )
@@ -1715,7 +1723,7 @@ ToolRegistry.register<typeof EditTool>({
 
     return (
       <>
-        <ToolTitle icon="←" fallback="Preparing edit..." when={props.input.filePath}>
+        <ToolTitle icon="←" fallback="Preparing edit..." when={props.input.filePath} onCollapse={props.onCollapse}>
           Edit {normalizePath(props.input.filePath!)}{" "}
           {input({
             replaceAll: props.input.replaceAll,
@@ -1767,7 +1775,7 @@ ToolRegistry.register<typeof PatchTool>({
     const { theme } = useTheme()
     return (
       <>
-        <ToolTitle icon="%" fallback="Preparing patch..." when={true}>
+        <ToolTitle icon="%" fallback="Preparing patch..." when={true} onCollapse={props.onCollapse}>
           Patch
         </ToolTitle>
         <Show when={props.output}>
@@ -1788,7 +1796,7 @@ ToolRegistry.register<typeof TodoWriteTool>({
     return (
       <>
         <Show when={!props.input.todos?.length}>
-          <ToolTitle icon="⚙" fallback="Updating todos..." when={true}>
+          <ToolTitle icon="⚙" fallback="Updating todos..." when={true} onCollapse={props.onCollapse}>
             Updating todos...
           </ToolTitle>
         </Show>
