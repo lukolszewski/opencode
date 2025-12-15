@@ -29,7 +29,7 @@ export namespace Tool {
         output: string
         attachments?: MessageV2.FilePart[]
       }>
-      formatValidationError?(error: z.ZodError): string
+      formatValidationError?(error: z.ZodError, args: any): string
     }>
   }
 
@@ -50,7 +50,7 @@ export namespace Tool {
             toolInfo.parameters.parse(args)
           } catch (error) {
             if (error instanceof z.ZodError && toolInfo.formatValidationError) {
-              throw new Error(toolInfo.formatValidationError(error), { cause: error })
+              throw new Error(toolInfo.formatValidationError(error, args), { cause: error })
             }
             throw new Error(
               `The ${id} tool was called with invalid arguments: ${error}.\nPlease rewrite the input so it satisfies the expected schema.`,

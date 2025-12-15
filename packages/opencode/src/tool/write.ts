@@ -17,9 +17,27 @@ const MAX_PROJECT_DIAGNOSTICS_FILES = 5
 export const WriteTool = Tool.define("write", {
   description: DESCRIPTION,
   parameters: z.object({
-    content: z.string().describe("The content to write to the file"),
+    content: z.string().describe("The content to write to the file as a plain string value (NOT an array). For multi-line content, use newline characters (\\n) within the string."),
     filePath: z.string().describe("The absolute path to the file to write (must be absolute, not relative)"),
   }),
+  formatValidationError(error, args) {
+    const issues = error.issues.map((issue) => {
+      const path = issue.path.join(".") || "root"
+      if (issue.code === "invalid_type") {
+        const invalidTypeIssue = issue as any
+        return `  - ${path}: expected ${invalidTypeIssue.expected}, received ${invalidTypeIssue.received}`
+      }
+      return `  - ${path}: ${issue.message}`
+    })
+
+    // Check if content was passed as an array
+    const isArray = Array.isArray(args?.content)
+    const arrayHint = isArray
+      ? `\n\nYou passed content as an array: ${JSON.stringify(args.content).slice(0, 100)}...\nDo NOT wrap the content in square brackets []. Pass the string directly.\nCorrect: content: "line1\\nline2\\nline3"\nWrong: content: ["line1\\nline2\\nline3"]`
+      : ""
+
+    return `Invalid write tool arguments:\n${issues.join("\n")}\n\nThe 'content' parameter must be a plain string value, NOT an array or object.${arrayHint}\n\nDEBUG: Received types - content: ${typeof args?.content}, filePath: ${typeof args?.filePath}`
+  },
   async execute(params, ctx) {
     const agent = await Agent.get(ctx.agent)
 

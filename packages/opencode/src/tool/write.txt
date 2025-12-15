@@ -6,3 +6,12 @@ Usage:
 - ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.
 - NEVER proactively create documentation files (*.md) or README files. Only create documentation files if explicitly requested by the User.
 - Only use emojis if the user explicitly requests it. Avoid writing emojis to files unless asked.
+
+CRITICAL - Content Parameter Type:
+- The 'content' parameter MUST be a plain string value, NOT an array, NOT an object, NOT wrapped in any container.
+- DO NOT wrap the content in square brackets [] - pass the string directly.
+- WRONG: content: ["file content here"] or content: ["line1\nline2"]
+- CORRECT: content: "file content here" or content: "line1\nline2"
+- For YAML/JSON files, the content is still just a string with newlines, never an array of lines.
+- Example: content: "apiVersion: v1\nkind: ConfigMap\ndata:\n  key: value"
+- The string can contain newline characters (\n) - this is the correct way to represent multi-line content.
